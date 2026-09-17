@@ -654,7 +654,15 @@ export function resolveGatewayScopedTools(
     ? tools.filter((tool) => tool.name.trim().toLowerCase() !== "exec")
     : tools;
   if (shouldInheritEffectiveToolAllowlist) {
-    replaceWithEffectiveToolAllowlist(inheritedToolAllowlist, inheritableTools);
+    // A CLI adapter can deduplicate native filesystem/shell tools from its MCP
+    // catalog. The host projection is still part of the parent's effective
+    // authority, so retain it for OpenClaw children after the same policy
+    // pipeline has filtered it. Adapter availability must not become a durable
+    // child-policy restriction.
+    replaceWithEffectiveToolAllowlist(inheritedToolAllowlist, [
+      ...inheritableTools,
+      ...nativeCreatorTools,
+    ]);
   }
   const nativeCapture = {
     canonicalToolNames: params.nativeCronCreatorToolAllowlist,

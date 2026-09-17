@@ -497,7 +497,9 @@ export async function buildPreparedCompactionRuntime(
     });
     const userTimezone = resolveUserTimezone(params.config?.agents?.defaults?.userTimezone);
     const userDate = formatDateStamp(Date.now(), userTimezone);
-    const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey);
+    const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey, {
+      parentControlled: Boolean(params.spawnedBy),
+    });
     const promptMode = promptPolicyRestricted
       ? "minimal"
       : resolvePromptModeForSession(params.sessionKey);

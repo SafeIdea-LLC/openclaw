@@ -20,7 +20,10 @@ import { resolveUserPath } from "../../utils.js";
 import { normalizeDeliveryContext } from "../../utils/delivery-context.shared.js";
 import { listAgentIds, resolveAgentConfig, resolveSessionAgentId } from "../agent-scope.js";
 import { reserveChildAdmissionSlot } from "../child-admission.js";
+import { resolveConversationCapabilityProfile } from "../conversation-capability-profile.js";
+import { projectConversationToolNames } from "../conversation-tool-policy-pipeline.js";
 import { resolveAgentIdentity } from "../identity.js";
+import { resolveDefaultModelForAgent } from "../model-selection.js";
 import { resolveSandboxRuntimeStatus } from "../sandbox/runtime-status.js";
 import { resolveSpawnedWorkspaceInheritance, type SpawnedToolContext } from "../spawned-context.js";
 import {
@@ -33,11 +36,13 @@ import { resolveSubagentSpawnOwnership } from "../subagents/spawn/subagent-spawn
 import {
   resolveConfiguredSubagentRunTimeoutSeconds,
   resolveSubagentModelAndThinkingPlan,
+  splitModelRef,
 } from "../subagents/spawn/subagent-spawn-plan.js";
 import { readRequesterModel } from "../subagents/spawn/subagent-spawn-requester-prefs.js";
 import { buildSubagentTaskMessage } from "../subagents/spawn/subagent-system-prompt.js";
 import { resolveSubagentTargetPolicy } from "../subagents/spawn/subagent-target-policy.js";
 import { resolveAgentTimeoutMs } from "../timeout.js";
+import { createToolPolicyMatcher } from "../tool-policy-match.js";
 import { normalizeToolModelOverride, readToolStringParam, ToolInputError } from "./common.js";
 import {
   callInProcessGatewayTool,
@@ -99,6 +104,25 @@ type VisibleSessionsSpawnOptions = VisibleSessionsSpawnDeps &
     config?: OpenClawConfig;
     requesterAgentIdOverride?: string;
   };
+
+const VISIBLE_REPOSITORY_READ_TOOLS = ["read"] as const;
+const VISIBLE_REPOSITORY_WRITE_TOOLS = ["read", "exec"] as const;
+
+function findMissingVisibleRepositoryTools(params: {
+  options?: VisibleSessionsSpawnOptions;
+  childAllowedTools: readonly string[];
+}): string[] {
+  const options = params.options;
+  const allow = options?.inheritedToolAllowlist;
+  const deny = options?.inheritedToolDenylist;
+  const matches = createToolPolicyMatcher({ allow, deny });
+  const childAllowedTools = new Set(params.childAllowedTools);
+  const requiredTools =
+    options?.sessionPermissionPolicy?.mode === "read-only"
+      ? VISIBLE_REPOSITORY_READ_TOOLS
+      : VISIBLE_REPOSITORY_WRITE_TOOLS;
+  return requiredTools.filter((toolName) => !matches(toolName) || !childAllowedTools.has(toolName));
+}
 
 function summarizeSessionsSpawnError(error: unknown): string {
   return error instanceof Error ? error.message : typeof error === "string" ? error : "error";
@@ -265,12 +289,12 @@ export async function maybeSpawnVisibleSession(params: {
     agentId: requesterAgentId,
   });
   // Gateway creation inherits the exact parent's requirement before admitting a child run.
-  const childRuntimeSandboxed =
-    requesterRuntime.sandboxRequired ||
-    resolveSandboxRuntimeStatus({
-      cfg,
-      sessionKey: `agent:${targetAgentId}:dashboard:pending`,
-    }).sandboxed;
+  const pendingChildSessionKey = `agent:${targetAgentId}:dashboard:pending`;
+  const targetRuntime = resolveSandboxRuntimeStatus({
+    cfg,
+    sessionKey: pendingChildSessionKey,
+  });
+  const childRuntimeSandboxed = requesterRuntime.sandboxRequired || targetRuntime.sandboxed;
   const requesterSandboxed = params.options?.sandboxed === true || requesterRuntime.sandboxed;
   if (!childRuntimeSandboxed && (requesterSandboxed || params.sandbox === "require")) {
     return {
@@ -330,6 +354,40 @@ export async function maybeSpawnVisibleSession(params: {
           hasFallbackOrigin: initialSessionPatch.modelOverrideFallbackOriginModel !== undefined,
         }
       : undefined;
+
+  if (worktree || projectId || projectGitUrl) {
+    const parsedModel = splitModelRef(resolvedModel);
+    const defaultModel = resolveDefaultModelForAgent({ cfg, agentId: targetAgentId });
+    const requiredCandidates = [...VISIBLE_REPOSITORY_WRITE_TOOLS];
+    const childAllowedTools = projectConversationToolNames({
+      capabilityProfile: resolveConversationCapabilityProfile({
+        config: cfg,
+        sessionKey: pendingChildSessionKey,
+        agentId: targetAgentId,
+        spawnedBy: requesterKey,
+        modelProvider: parsedModel.provider ?? defaultModel.provider,
+        modelId: parsedModel.model ?? defaultModel.model,
+        sandboxToolPolicy: targetRuntime.sandboxed ? targetRuntime.toolPolicy : undefined,
+      }),
+      toolNames: requiredCandidates,
+      warn: () => {},
+    });
+    const missingTools = findMissingVisibleRepositoryTools({
+      options: params.options,
+      childAllowedTools,
+    });
+    if (missingTools.length > 0) {
+      return {
+        status: "forbidden",
+        error:
+          `Cannot create a visible repository/worktree child because its inherited tool policy ` +
+          `does not allow required tools: ${missingTools.join(", ")}. ` +
+          "Authorize those tools on the parent or create the repository session directly as an operator. " +
+          "Parent-controlled children cannot recover this authority with /codex bind.",
+      };
+    }
+  }
+
   const reservation = reserveChildAdmissionSlot({
     controllerSessionKey: requesterKey,
     resolveAdmission: (pendingChildren) => {

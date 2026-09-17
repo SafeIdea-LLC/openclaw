@@ -256,7 +256,9 @@ export async function resolveCommandsSystemPromptBundle(
     }
   })();
   const toolNames = tools.map((t) => t.name);
-  const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey);
+  const promptSurface = resolveAgentPromptSurfaceForSessionKey(params.sessionKey, {
+    parentControlled: Boolean(targetSessionEntry?.spawnedBy),
+  });
   const accountId = params.command.accountId ?? params.ctx.AccountId;
   const { runtimeInfo, userTimezone, userDate, reactionGuidance, messageToolHints } =
     await resolveAgentRuntimePrompt({

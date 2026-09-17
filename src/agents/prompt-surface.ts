@@ -27,9 +27,12 @@ export function shouldRenderOpenClawToolWorkflowHints(params: {
 /** Maps a session key to the prompt surface used for tool guidance and runtime behavior. */
 export function resolveAgentPromptSurfaceForSessionKey(
   sessionKey?: string,
+  options?: { parentControlled?: boolean },
 ): AgentPromptSurfaceKind {
   if (sessionKey && isAcpSessionKey(sessionKey)) {
     return "acp_backend";
   }
-  return sessionKey && isSubagentSessionKey(sessionKey) ? "subagent" : "openclaw_main";
+  return options?.parentControlled === true || (sessionKey && isSubagentSessionKey(sessionKey))
+    ? "subagent"
+    : "openclaw_main";
 }
