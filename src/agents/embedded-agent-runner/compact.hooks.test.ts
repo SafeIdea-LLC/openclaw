@@ -1263,10 +1263,11 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
     },
   );
 
-  it("uses subagent prompt surface and guidance for compacted subagent prompt rebuilds", async () => {
+  it("uses subagent prompt surface for compacted parent-controlled dashboard sessions", async () => {
     await compactEmbeddedAgentSessionDirect({
       sessionId: "session-1",
-      sessionKey: "agent:main:subagent:worker",
+      sessionKey: "agent:main:dashboard:worker",
+      spawnedBy: "agent:main:main",
       sessionFile: TEST_SESSION_KEY,
       workspaceDir: join(TEST_WORKSPACE_DIR, "workspace"),
       cwd: join(TEST_WORKSPACE_DIR, "task-repo"),
@@ -1277,7 +1278,6 @@ describe("compactEmbeddedAgentSessionDirect hooks", () => {
     });
     expect(buildEmbeddedSystemPromptMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        promptMode: "minimal",
         workspaceDir: join(TEST_WORKSPACE_DIR, "workspace"),
         runtimeCwd: join(TEST_WORKSPACE_DIR, "task-repo"),
         promptSurface: "subagent",

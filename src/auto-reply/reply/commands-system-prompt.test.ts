@@ -453,6 +453,11 @@ describe("resolveCommandsSystemPromptBundle", () => {
     expect(toolParams.groupChannel).toBe("#target");
     expect(toolParams.groupSpace).toBe("target-space");
     expect(toolParams.spawnedBy).toBe("agent:target-parent");
+    const promptParams = requireFirstArg(
+      vi.mocked(buildAgentSystemPrompt),
+      "buildAgentSystemPrompt",
+    );
+    expect(promptParams.promptSurface).toBe("subagent");
   });
 
   it("uses the resolved session key and forwards full-access block reasons", async () => {

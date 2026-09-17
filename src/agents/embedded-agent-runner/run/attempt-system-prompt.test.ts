@@ -63,7 +63,7 @@ async function preparePermissionPrompt(
   isRawModelRun = false,
   thinkLevel?: EmbeddedRunAttemptParams["thinkLevel"],
   requireExplicitMessageTarget?: boolean,
-  session?: Pick<EmbeddedRunAttemptParams, "sessionKey" | "sandboxSessionKey">,
+  session?: Pick<EmbeddedRunAttemptParams, "sessionKey" | "sandboxSessionKey" | "spawnedBy">,
 ) {
   const tool = (name: string): AgentTool => ({
     name,
@@ -80,6 +80,7 @@ async function preparePermissionPrompt(
     write,
     exec,
     ...(session ? [tool("process")] : []),
+    ...(session?.spawnedBy ? [tool("sessions_spawn")] : []),
     ...(requireExplicitMessageTarget === undefined ? [] : [tool("message")]),
   ];
   const attempt = {
@@ -184,6 +185,16 @@ describe("buildAttemptSystemPrompt", () => {
     expect(prompts[0]).not.toBe("");
     expect(prompts[1]).toBe(prompts[0]);
     expect(prompts[2]).toBe(prompts[0]);
+  });
+
+  it("uses the subagent prompt surface for a parent-controlled dashboard attempt", async () => {
+    const { prepared } = await preparePermissionPrompt(false, undefined, undefined, {
+      sessionKey: "agent:main:dashboard:visible-child",
+      spawnedBy: "agent:main:main",
+    });
+
+    expect(prepared.systemPromptText).not.toContain("Large work: `sessions_spawn`");
+    expect(prepared.systemPromptText).not.toContain("Native Codex app-server plugin is available");
   });
 
   it.each([

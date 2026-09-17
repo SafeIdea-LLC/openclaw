@@ -133,7 +133,9 @@ export async function prepareEmbeddedAttemptSystemPrompt(params: {
   const promptMode =
     attempt.promptMode ??
     (params.isRawModelRun ? "none" : resolvePromptModeForSession(attempt.sessionKey));
-  const promptSurface = resolveAgentPromptSurfaceForSessionKey(attempt.sessionKey);
+  const promptSurface = resolveAgentPromptSurfaceForSessionKey(attempt.sessionKey, {
+    parentControlled: Boolean(attempt.spawnedBy),
+  });
   const toolPolicyRestricted = toolPolicyRestrictsTools({ allow: attempt.toolsAllow });
   const effectivePromptMode = toolPolicyRestricted ? ("minimal" as const) : promptMode;
   const effectiveSkillsPrompt = toolPolicyRestricted ? undefined : params.skillsPrompt;
