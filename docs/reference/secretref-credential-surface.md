@@ -106,6 +106,10 @@ Source generation fails if a present channel secret-contract artifact cannot loa
 - `gateway.remote.password`
 - `gateway.remote.token`
 
+#### `mcp`
+
+- `mcp.servers.*.bearerToken`
+
 #### `memory`
 
 - `memory.search.remote.apiKey`

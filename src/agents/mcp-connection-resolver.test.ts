@@ -653,6 +653,7 @@ describe("mcp connection resolver helpers", () => {
         args: ["serve"],
         auth: "oauth",
         oauth: { scope: "mail" },
+        bearerToken: { source: "store", provider: "default", id: "STATIC_TOKEN" },
         url: "https://placeholder.example",
         headers: { Authorization: "test-auth-token" },
         toolFilter: { include: ["send"] },
@@ -670,6 +671,7 @@ describe("mcp connection resolver helpers", () => {
       },
     });
     expect(JSON.stringify(redacted)).not.toContain("test-auth-token");
+    expect(JSON.stringify(redacted)).not.toContain("STATIC_TOKEN");
     expect(JSON.stringify(redacted)).not.toContain("placeholder");
 
     const applied = applyMcpConnectionOverride(servers["user-mail"], {
@@ -684,6 +686,7 @@ describe("mcp connection resolver helpers", () => {
     });
     expect(applied).not.toHaveProperty("auth");
     expect(applied).not.toHaveProperty("oauth");
+    expect(applied).not.toHaveProperty("bearerToken");
     expect(applied).not.toHaveProperty("command");
     expect(applied).not.toHaveProperty("type");
     expect(servers["user-mail"].headers).toEqual({ Authorization: "test-auth-token" });

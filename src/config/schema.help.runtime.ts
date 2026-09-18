@@ -311,7 +311,7 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
   "nodeHost.mcp":
     "Use MCP servers started by the headless node host and published to its paired gateway as agent tools. Restart the node host after changing this section.",
   "nodeHost.mcp.servers":
-    "Named MCP server definitions local to this node. Uses the same server shape as mcp.servers; OAuth servers are not supported by the node host.",
+    "Named MCP server definitions local to this node. Uses the same server shape as mcp.servers; OAuth servers and store-backed bearerToken SecretRefs are not supported by the node host, which does not have access to the Gateway's protected secret store.",
   "nodeHost.skills":
     "Use this section to publish skills installed in ~/.openclaw/skills from the headless node host. Restart the node host after changing skill files.",
   "nodeHost.skills.enabled":

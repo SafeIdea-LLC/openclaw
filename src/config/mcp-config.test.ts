@@ -232,6 +232,31 @@ describe("config mcp config", () => {
     });
   });
 
+  it("accepts a store-backed bearerToken SecretRef for HTTP MCP servers", async () => {
+    await withMcpConfigHome({}, async () => {
+      const setResult = await setConfiguredMcpServer({
+        name: "remote",
+        server: {
+          url: "https://mem.richtera.dev/mcp",
+          transport: "streamable-http",
+          bearerToken: { source: "store", provider: "default", id: "MCP_MEM_TOKEN" },
+        },
+      });
+
+      expect(setResult.ok).toBe(true);
+      const loaded = await listConfiguredMcpServers();
+      expect(loaded.ok).toBe(true);
+      if (!loaded.ok) {
+        throw new Error("expected MCP config to load");
+      }
+      expect(loaded.mcpServers.remote).toEqual({
+        url: "https://mem.richtera.dev/mcp",
+        transport: "streamable-http",
+        bearerToken: { source: "store", provider: "default", id: "MCP_MEM_TOKEN" },
+      });
+    });
+  });
+
   it("restores redacted MCP secrets on set instead of writing the sentinel", async () => {
     await withMcpConfigHome(
       {

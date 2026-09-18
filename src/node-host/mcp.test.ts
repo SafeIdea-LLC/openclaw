@@ -223,6 +223,53 @@ describe("node host MCP manager", () => {
     expect(docs.close).toHaveBeenCalledOnce();
   });
 
+  it("skips OAuth and store-backed bearerToken servers instead of connecting", async () => {
+    const oauthClient = createClient();
+    const storeBearerClient = createClient();
+    const literalBearerClient = createClient({ tools: [tool("search")] });
+    const warn = vi.fn();
+    const manager = await startNodeHostMcpManager(
+      {
+        oauthServer: { url: "https://oauth.invalid/mcp", auth: "oauth" },
+        storeBearerServer: {
+          url: "https://store.invalid/mcp",
+          bearerToken: { source: "store", provider: "default", id: "NODE_HOST_TOKEN" },
+        },
+        literalBearerServer: {
+          url: "https://literal.invalid/mcp",
+          bearerToken: "inline-token",
+        },
+      },
+      {
+        createClient: (serverName) =>
+          serverName === "oauthServer"
+            ? oauthClient
+            : serverName === "storeBearerServer"
+              ? storeBearerClient
+              : literalBearerClient,
+        resolveTransport: () => transport,
+        warn,
+      },
+    );
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('server "oauthServer" skipped: OAuth is not supported'),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'server "storeBearerServer" skipped: store-backed bearerToken SecretRefs are not supported',
+      ),
+    );
+    expect(oauthClient.connect).not.toHaveBeenCalled();
+    expect(storeBearerClient.connect).not.toHaveBeenCalled();
+    expect(literalBearerClient.connect).toHaveBeenCalledOnce();
+    expect(manager.descriptors.map((descriptor) => descriptor.mcp?.server)).toEqual([
+      "literalBearerServer",
+    ]);
+
+    await manager.close();
+  });
+
   it("sanitizes and deterministically deduplicates descriptor names", async () => {
     const manager = await startManagerWithTools([
       { serverName: "123 docs", tools: [tool("find.item"), tool("find-item")] },

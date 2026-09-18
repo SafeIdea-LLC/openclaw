@@ -215,6 +215,18 @@ const CORE_SECRET_TARGET_REGISTRY: SecretTargetRegistryEntry[] = [
     includeInConfigure: true,
     includeInAudit: true,
   },
+  {
+    id: "mcp.servers.*.bearerToken",
+    targetType: "mcp.servers.*.bearerToken",
+    configFile: "openclaw.json",
+    pathPattern: "mcp.servers.*.bearerToken",
+    secretShape: SECRET_INPUT_SHAPE,
+    expectedResolvedValue: "string",
+    includeInPlan: true,
+    includeInConfigure: true,
+    includeInAudit: true,
+    providerIdPathSegmentIndex: 2,
+  },
   ...["tts", "agents.entries.*.tts"].flatMap((prefix) =>
     ["providers.*", "personas.*.providers.*"].map((providerPath): SecretTargetRegistryEntry => {
       const path = `${prefix}.${providerPath}.apiKey`;

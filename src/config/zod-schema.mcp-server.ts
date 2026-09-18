@@ -1,5 +1,6 @@
 import { isHttpsUrl, isHttpUrl } from "@openclaw/net-policy/url-protocol";
 import { z } from "zod";
+import { SecretInputSchema } from "./zod-schema.secret-input.js";
 import { sensitive } from "./zod-schema.sensitive.js";
 
 const HttpUrlSchema = z.string().url().refine(isHttpUrl, "Expected http:// or https:// URL");
@@ -37,6 +38,12 @@ export const McpServerSchema = z
     connectionTimeoutMs: z.number().finite().positive().optional(),
     requestTimeoutMs: z.number().finite().positive().optional(),
     supportsParallelToolCalls: z.boolean().optional(),
+    /**
+     * Static `Authorization: Bearer <token>` credential for HTTP transports.
+     * Accepts a SecretRef so the token can live in the protected secret store
+     * instead of plaintext config. Mutually exclusive with `auth: "oauth"`.
+     */
+    bearerToken: SecretInputSchema.optional().register(sensitive),
     auth: z.literal("oauth").optional(),
     oauth: z
       .strictObject({
@@ -152,6 +159,14 @@ export const McpServerSchema = z
         code: z.ZodIssueCode.custom,
         message: '"stdio" transport requires a non-empty command',
         path: ["transport"],
+      });
+    }
+    if (data.bearerToken !== undefined && data.auth === "oauth") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'bearerToken cannot be combined with auth: "oauth"; OAuth already manages the Authorization header',
+        path: ["bearerToken"],
       });
     }
   })

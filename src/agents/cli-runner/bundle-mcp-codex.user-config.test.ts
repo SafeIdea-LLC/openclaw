@@ -520,6 +520,40 @@ describe("buildCodexUserMcpServersThreadConfigPatchForRuntime", () => {
     expect(JSON.stringify(patch)).not.toContain("refresh-token-must-not-project");
   });
 
+  it("projects a bearerToken SecretRef into local Codex runtime config without persisting the raw ref", async () => {
+    process.env.OPENCLAW_TEST_CODEX_MCP_BEARER = "resolved-store-token";
+    try {
+      const patch = await buildCodexUserMcpServersThreadConfigPatchForRuntime({
+        mcp: {
+          servers: {
+            mem: {
+              transport: "streamable-http",
+              url: "https://mem.richtera.dev/mcp",
+              bearerToken: {
+                source: "env",
+                provider: "default",
+                id: "OPENCLAW_TEST_CODEX_MCP_BEARER",
+              },
+            },
+          },
+        },
+      } as unknown as OpenClawConfig);
+
+      expect(patch).toStrictEqual({
+        mcp_servers: {
+          mem: {
+            url: "https://mem.richtera.dev/mcp",
+            http_headers: { Authorization: "Bearer resolved-store-token" },
+          },
+        },
+      });
+      expect(JSON.stringify(patch)).not.toContain("OPENCLAW_TEST_CODEX_MCP_BEARER");
+      expect(JSON.stringify(patch)).not.toContain("bearerToken");
+    } finally {
+      delete process.env.OPENCLAW_TEST_CODEX_MCP_BEARER;
+    }
+  });
+
   it("projects MCP-native OAuth credentials into local Codex runtime config", async () => {
     authMocks.resolveMcpOAuthAccessToken.mockResolvedValueOnce("native-access-token");
 

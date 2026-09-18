@@ -12,6 +12,7 @@ import { logDebug } from "../logger.js";
 import { truncateUtf8Suffix } from "../utils/utf8-truncate.js";
 import type { SessionMcpRequesterScope } from "./agent-bundle-mcp-types.js";
 import { resolveMcpAuthProfileId, withMcpAuthProfileBearer } from "./mcp-auth-profile.js";
+import { withMcpStaticBearerToken } from "./mcp-bearer-secret.js";
 import {
   buildMcpHttpFetch,
   withoutMcpAuthorizationHeader,
@@ -174,8 +175,9 @@ export function resolveMcpTransport(
     clientKey: resolved.clientKey,
     resourceUrl: resolved.url,
   });
+  const bearerTokenInput = resolved.bearerToken;
   const headers =
-    resolved.auth === "oauth" || authProfileId
+    resolved.auth === "oauth" || authProfileId || bearerTokenInput !== undefined
       ? withoutMcpAuthorizationHeader(resolved.headers)
       : resolved.headers;
   const resourceFetch = withSameOriginMcpHttpHeaders({
@@ -202,7 +204,16 @@ export function resolveMcpTransport(
           identity: oauthIdentity,
           config: resolved.oauth,
         })
-      : baseFetch;
+      : bearerTokenInput !== undefined
+        ? withMcpStaticBearerToken({
+            fetchFn: baseFetch,
+            serverName,
+            resourceUrl: resolved.url,
+            headers,
+            value: bearerTokenInput,
+            cfg: options?.cfg,
+          })
+        : baseFetch;
   if (resolved.transportType === "streamable-http") {
     return {
       transport: new OpenClawStreamableHTTPClientTransport(new URL(resolved.url), {
