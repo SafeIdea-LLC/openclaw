@@ -52,6 +52,8 @@ type ResolvedHttpMcpTransportConfig = ResolvedBaseMcpTransportConfig & {
   headers?: Record<string, string>;
   auth?: "oauth";
   oauth?: ResolvedMcpOAuthConfig;
+  /** Unresolved SecretInput (literal string or SecretRef) for the static bearer token, if configured. */
+  bearerToken?: unknown;
   sslVerify?: boolean;
   clientCert?: string;
   clientKey?: string;
@@ -113,6 +115,10 @@ function getStringField(rawServer: unknown, keys: readonly string[]): string | u
   return record ? readTrimmedStringAlias(record, keys) : undefined;
 }
 
+function getBearerTokenInput(rawServer: unknown): unknown {
+  return asOptionalObjectRecord(rawServer)?.bearerToken;
+}
+
 function resolveHttpTransportConfig(
   serverName: string,
   rawServer: unknown,
@@ -165,6 +171,9 @@ function resolveHttpTransportConfig(
       : {}),
     ...(getStringField(rawServer, ["clientKey"])
       ? { clientKey: getStringField(rawServer, ["clientKey"]) }
+      : {}),
+    ...(getBearerTokenInput(rawServer) !== undefined
+      ? { bearerToken: getBearerTokenInput(rawServer) }
       : {}),
     description: redactSensitiveUrl(launch.config.url),
     connectionTimeoutMs: getConnectionTimeoutMs(rawServer),

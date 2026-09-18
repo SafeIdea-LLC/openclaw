@@ -8,6 +8,10 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { BundleMcpConfig, BundleMcpServerConfig } from "../plugins/bundle-mcp.js";
 import { createLazyRuntimeMethod } from "../shared/lazy-runtime.js";
 import {
+  resolveMcpBearerSecretToken,
+  resolveMcpServerBearerTokenInput,
+} from "./mcp-bearer-secret.js";
+import {
   buildMcpHttpFetch,
   withoutMcpAuthorizationHeader,
   withSameOriginMcpHttpHeaders,
@@ -33,7 +37,13 @@ export function resolveMcpAuthProfileId(rawServer: unknown): string | undefined 
 
 /** Returns whether a server needs an OpenClaw-managed bearer projected externally. */
 export function requiresMcpBearerProjection(rawServer: unknown): boolean {
-  if (!isRecord(rawServer) || rawServer.auth !== "oauth") {
+  if (!isRecord(rawServer)) {
+    return false;
+  }
+  if (resolveMcpServerBearerTokenInput(rawServer) !== undefined) {
+    return true;
+  }
+  if (rawServer.auth !== "oauth") {
     return false;
   }
   return Boolean(resolveMcpAuthProfileId(rawServer) || typeof rawServer.url === "string");
@@ -58,6 +68,14 @@ async function resolveMcpBearerToken(params: {
       profileId: authProfileId,
       cfg: params.cfg,
       agentDir: params.agentDir,
+    });
+  }
+  const bearerTokenInput = resolveMcpServerBearerTokenInput(params.server);
+  if (bearerTokenInput !== undefined) {
+    return await resolveMcpBearerSecretToken({
+      serverName: params.serverName,
+      value: bearerTokenInput,
+      cfg: params.cfg,
     });
   }
   if (params.server.auth !== "oauth") {
@@ -129,10 +147,11 @@ function buildTokenEnvVarName(serverName: string): string {
   return `OPENCLAW_MCP_AUTH_${hash.toUpperCase()}_TOKEN`;
 }
 
-function stripOpenClawOnlyOAuthConfig(server: BundleMcpServerConfig): BundleMcpServerConfig {
+function stripOpenClawOnlyMcpAuthConfig(server: BundleMcpServerConfig): BundleMcpServerConfig {
   const next = { ...server };
   delete next.auth;
   delete next.oauth;
+  delete next.bearerToken;
   return next;
 }
 
@@ -184,7 +203,7 @@ export async function resolveMcpBearerBundleConfig(
     }
     const headers = withoutMcpAuthorizationHeader(filterStringRecord(server.headers));
     nextServers ??= { ...params.config.mcpServers };
-    nextServers[serverName] = stripOpenClawOnlyOAuthConfig({
+    nextServers[serverName] = stripOpenClawOnlyMcpAuthConfig({
       ...server,
       headers: {
         ...headers,

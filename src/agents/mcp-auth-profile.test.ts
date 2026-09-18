@@ -79,6 +79,42 @@ describe("mcp auth profile bearer projection", () => {
     );
   });
 
+  it("projects a bearerToken SecretRef into an env-backed CLI bearer header by default", async () => {
+    process.env.OPENCLAW_TEST_AUTH_PROFILE_BEARER = "resolved-secret-token";
+    try {
+      const resolved = await resolveMcpBearerBundleConfig({
+        config: {
+          mcpServers: {
+            mem: {
+              url: "https://mem.richtera.dev/mcp",
+              type: "http",
+              bearerToken: {
+                source: "env",
+                provider: "default",
+                id: "OPENCLAW_TEST_AUTH_PROFILE_BEARER",
+              },
+            },
+          },
+        },
+      });
+
+      expect(resolved.config.mcpServers.mem).toEqual({
+        url: "https://mem.richtera.dev/mcp",
+        type: "http",
+        headers: {
+          Authorization: expect.stringMatching(
+            /^Bearer \$\{OPENCLAW_MCP_AUTH_[A-F0-9]{12}_TOKEN}$/,
+          ),
+        },
+      });
+      expect(resolved.config.mcpServers.mem?.bearerToken).toBeUndefined();
+      expect(Object.values(resolved.env ?? {})).toEqual(["resolved-secret-token"]);
+      expect(JSON.stringify(resolved.config)).not.toContain("resolved-secret-token");
+    } finally {
+      delete process.env.OPENCLAW_TEST_AUTH_PROFILE_BEARER;
+    }
+  });
+
   it("omits unavailable OAuth servers when graceful degradation is requested", async () => {
     authMocks.resolveMcpOAuthAccessToken.mockRejectedValueOnce(
       new Error('MCP server "gbrain" requires OAuth authorization.'),

@@ -14,6 +14,7 @@ import { normalizeLowercaseStringOrEmpty } from "@openclaw/normalization-core/st
 import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import pLimit from "p-limit";
 import type { NodePluginToolDescriptor } from "../../packages/gateway-protocol/src/schema/nodes.js";
+import { isMcpServerBearerTokenStoreBacked } from "../agents/mcp-bearer-secret.js";
 import {
   connectMcpClient,
   disposeMcpClient,
@@ -535,6 +536,13 @@ export async function startNodeHostMcpManager(
     if (state.config.auth === "oauth" || state.config.oauth) {
       states.delete(state.serverName);
       warn(`node host MCP server "${state.serverName}" skipped: OAuth is not supported`);
+      return;
+    }
+    if (isMcpServerBearerTokenStoreBacked(state.config)) {
+      states.delete(state.serverName);
+      warn(
+        `node host MCP server "${state.serverName}" skipped: store-backed bearerToken SecretRefs are not supported`,
+      );
       return;
     }
     try {
