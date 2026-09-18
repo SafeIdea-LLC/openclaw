@@ -87,11 +87,17 @@ export function withMcpStaticBearerToken(params: {
         headers.set(key, value);
       }
     }
+    // Discard a rejected resolution instead of caching the failure, so a transient
+    // resolution error (locked file, flaky exec, store hiccup) can succeed on retry
+    // without waiting for the whole transport to be torn down and rebuilt.
     tokenPromise ??= resolveMcpBearerSecretToken({
       serverName: params.serverName,
       value: params.value,
       cfg: params.cfg,
       env: params.env,
+    }).catch((error: unknown) => {
+      tokenPromise = undefined;
+      throw error;
     });
     const token = await tokenPromise;
     headers.set("authorization", `Bearer ${token}`);

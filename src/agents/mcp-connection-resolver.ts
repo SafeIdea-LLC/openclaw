@@ -285,10 +285,11 @@ export function applyMcpConnectionOverride(
       : undefined;
   const fromType = resolveOpenClawMcpTransportAlias(base.type);
   base.transport = fromTransport ?? fromType ?? "streamable-http";
-  // Resolver-supplied headers are the auth surface; strip static OAuth so the
-  // transport layer does not drop Authorization from overrides.
+  // Resolver-supplied headers are the auth surface; strip all static auth so the
+  // transport layer neither drops nor replaces Authorization from overrides.
   delete base.auth;
   delete base.oauth;
+  delete base.bearerToken;
   delete base.type;
   delete base.command;
   delete base.args;
@@ -321,6 +322,7 @@ export function redactMcpServersForFingerprint(
       command: _command,
       args: _args,
       env: _env,
+      bearerToken: _bearerToken,
       ...rest
     } = rawServer;
     redacted[serverName] = {

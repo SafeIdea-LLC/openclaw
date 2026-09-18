@@ -365,6 +365,33 @@ describe("resolveMcpTransport", () => {
     }
   });
 
+  it("retries bearerToken SecretRef resolution after a transient failure", async () => {
+    runtimeFetchMock.mockResolvedValue(new Response("ok"));
+    delete process.env.OPENCLAW_TEST_MCP_BEARER_TOKEN;
+    resolveMcpTransport("probe", {
+      url: "https://mcp.example.com/mcp",
+      transport: "streamable-http",
+      bearerToken: {
+        source: "env",
+        provider: "default",
+        id: "OPENCLAW_TEST_MCP_BEARER_TOKEN",
+      },
+    });
+
+    const options = latestStreamableTransportOptions();
+    await expect(options.fetch?.("https://mcp.example.com/mcp")).rejects.toThrow();
+
+    process.env.OPENCLAW_TEST_MCP_BEARER_TOKEN = "available-after-retry";
+    try {
+      await options.fetch?.("https://mcp.example.com/mcp");
+      expect(new Headers(runtimeFetchCall(0)?.[1]?.headers).get("authorization")).toBe(
+        "Bearer available-after-retry",
+      );
+    } finally {
+      delete process.env.OPENCLAW_TEST_MCP_BEARER_TOKEN;
+    }
+  });
+
   it("routes native OAuth through the host fetch coordinator instead of the SDK provider", () => {
     resolveMcpTransport("probe", {
       url: "https://mcp.example.com/mcp",

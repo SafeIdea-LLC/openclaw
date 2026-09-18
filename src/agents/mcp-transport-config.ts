@@ -14,6 +14,7 @@ import { resolveOpenClawMcpTransportAlias } from "../config/mcp-config-normalize
 import { createDedupeCache } from "../infra/dedupe.js";
 import { logWarn } from "../logger.js";
 import { readTrimmedStringAlias } from "../utils/string-readers.js";
+import { resolveMcpServerBearerTokenInput } from "./mcp-bearer-secret.js";
 import { resolveHttpMcpServerLaunchConfig, type HttpMcpTransportType } from "./mcp-http.js";
 import type { McpOAuthConfig } from "./mcp-oauth-provider.js";
 import {
@@ -115,10 +116,6 @@ function getStringField(rawServer: unknown, keys: readonly string[]): string | u
   return record ? readTrimmedStringAlias(record, keys) : undefined;
 }
 
-function getBearerTokenInput(rawServer: unknown): unknown {
-  return asOptionalObjectRecord(rawServer)?.bearerToken;
-}
-
 function resolveHttpTransportConfig(
   serverName: string,
   rawServer: unknown,
@@ -172,8 +169,8 @@ function resolveHttpTransportConfig(
     ...(getStringField(rawServer, ["clientKey"])
       ? { clientKey: getStringField(rawServer, ["clientKey"]) }
       : {}),
-    ...(getBearerTokenInput(rawServer) !== undefined
-      ? { bearerToken: getBearerTokenInput(rawServer) }
+    ...(resolveMcpServerBearerTokenInput(rawServer) !== undefined
+      ? { bearerToken: resolveMcpServerBearerTokenInput(rawServer) }
       : {}),
     description: redactSensitiveUrl(launch.config.url),
     connectionTimeoutMs: getConnectionTimeoutMs(rawServer),
