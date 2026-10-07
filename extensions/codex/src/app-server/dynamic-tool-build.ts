@@ -10,7 +10,6 @@ import {
   normalizeAgentRuntimeTools,
   resolveAttemptSpawnWorkspaceDir,
   resolveModelAuthMode,
-  resolveSandboxContext,
   supportsModelTools,
   type EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
   type RuntimeToolSchemaDiagnostic,
@@ -29,6 +28,12 @@ import {
   readCodexPluginConfig,
   type CodexPluginConfig,
 } from "./config.js";
+import type {
+  DynamicToolBuildParams,
+  OpenClawCodingToolsOptions,
+  OpenClawDynamicTool,
+  OpenClawSandboxContext,
+} from "./dynamic-tool-build.types.js";
 import {
   createCodexHostToolSurface,
   resolveCodexToolConstructionPlan,
@@ -49,7 +54,6 @@ import type { CodexSandboxPolicy, CodexTurnEnvironmentParams } from "./protocol.
 import { mapCodexAppServerRemoteWorkspacePath } from "./remote-workspace-path.js";
 import { isCodexResponsesOAuthRun } from "./responses-oauth.js";
 import type { CodexSandboxExecEnvironment } from "./sandbox-exec-server.js";
-import type { CodexEffectiveSessionPermissionPolicy } from "./session-permission-policy.js";
 import {
   CODEX_GATEWAY_EXEC_DYNAMIC_TOOL_NAME,
   CODEX_GATEWAY_PROCESS_DYNAMIC_TOOL_NAME,
@@ -61,25 +65,10 @@ import {
   createSandboxProcessProjection,
   isCodexDynamicToolExcluded,
   placeDisabledNativeShellToolsInDirectNamespace,
-  type NodeExecAvailabilityRef,
 } from "./shell-dynamic-tools.js";
 import { filterCodexVisionTools } from "./vision-tools.js";
-import { resolveCodexWebSearchPlan, type CodexNativeWebSearchSupport } from "./web-search.js";
+import { resolveCodexWebSearchPlan } from "./web-search.js";
 
-type OpenClawCodingToolsOptions = NonNullable<
-  Parameters<
-    (typeof import("openclaw/plugin-sdk/agent-harness"))["createOpenClawCodingToolsAsync"]
-  >[0]
->;
-
-/** Factory seam for constructing OpenClaw runtime tools without eagerly loading agent-harness. */
-type OpenClawCodingToolsFactory =
-  (typeof import("openclaw/plugin-sdk/agent-harness"))["createOpenClawCodingToolsAsync"];
-type OpenClawDynamicTool = Awaited<ReturnType<OpenClawCodingToolsFactory>>[number];
-type OpenClawSandboxContext = Awaited<ReturnType<typeof resolveSandboxContext>>;
-type CodexDynamicToolBuildEvent = Parameters<
-  NonNullable<EmbeddedRunAttemptParams["onAgentEvent"]>
->[0];
 const CODEX_MEMORY_FLUSH_DYNAMIC_TOOL_ALLOW = new Set(["read", "write"]);
 
 function preserveRingZeroSystemAgentTool<T extends { name: string; catalogMode?: string }>(
@@ -94,44 +83,6 @@ function preserveRingZeroSystemAgentTool<T extends { name: string; catalogMode?:
   }
   return [openclaw, ...filteredTools.filter((tool) => tool.name !== "openclaw")];
 }
-type DynamicToolBuildParams = {
-  params: EmbeddedRunAttemptParams;
-  resolvedWorkspace: string;
-  effectiveWorkspace: string;
-  effectiveCwd?: string;
-  sandboxSessionKey: string;
-  sandbox: OpenClawSandboxContext;
-  sessionPermissionPolicy?: CodexEffectiveSessionPermissionPolicy;
-  nativeToolSurfaceEnabled?: boolean;
-  nativeProviderWebSearchSupport?: CodexNativeWebSearchSupport;
-  runAbortController: AbortController;
-  nodeExecAvailability?: NodeExecAvailabilityRef;
-  sessionAgentId: string;
-  policyAgentId: string;
-  pluginConfig: CodexPluginConfig;
-  profilerEnabled?: boolean;
-  cronCreatorToolAllowlistRef?: OpenClawCodingToolsOptions["cronCreatorToolAllowlistRef"];
-  cronCreatorToolAllowlistCaptureRef?: OpenClawCodingToolsOptions["cronCreatorToolAllowlistCaptureRef"];
-  resolveCronCreatorToolAuthority?: Parameters<typeof createCodexHostToolSurface>[3];
-  cronCreatorAuthorityUnavailableReason?: OpenClawCodingToolsOptions["cronCreatorAuthorityUnavailableReason"];
-  forceHeartbeatTool?: boolean;
-  ignoreDisableMessageTool?: boolean;
-  ignoreRuntimePlan?: boolean;
-  /** Host fact resolver; injectable only for focused plugin contract tests. */
-  isHostScopedToolActive?: (toolName: string) => boolean;
-  onYieldDetected: (message: string, acknowledgment?: string) => void;
-  claimYieldCompletion?: OpenClawCodingToolsOptions["claimYieldCompletion"];
-  onCodexAppServerEvent?: (event: CodexDynamicToolBuildEvent) => void;
-  onPersistentWebSearchPolicyResolved?: (allowed: boolean) => void;
-  onWebSearchPolicyResolved?: (allowed: boolean) => void;
-  onMessageToolTargetResolved?: (requireExplicitMessageTarget: boolean) => void;
-  computerContextEpoch?: {
-    value: number;
-    frameToolCallId?: string;
-    frameImageIdentity?: string;
-  };
-  registerRunCleanup?: OpenClawCodingToolsOptions["registerRunCleanup"];
-};
 export function resolveCodexMessageToolProvider(
   params: Pick<EmbeddedRunAttemptParams, "messageChannel" | "messageProvider">,
 ): string | undefined {
@@ -169,9 +120,11 @@ export async function buildDynamicTools(
   const messagePolicyParams = input.ignoreDisableMessageTool
     ? { ...params, disableMessageTool: false }
     : params;
+  const forceMessageTool =
+    input.forceMessageTool === true || shouldForceMessageTool(messagePolicyParams);
   const toolRunContext = buildEmbeddedAttemptToolRunContext({
     ...params,
-    forceMessageTool: shouldForceMessageTool(messagePolicyParams),
+    forceMessageTool,
   });
   if (params.disableTools) {
     input.onWebSearchPolicyResolved?.(false);
@@ -204,6 +157,7 @@ export async function buildDynamicTools(
     params.requireWorkspaceOnly,
   );
   const options: OpenClawCodingToolsOptions = {
+    catalogOnly: input.catalogOnly,
     agentId: input.sessionAgentId,
     policyAgentId: input.policyAgentId,
     ...toolRunContext,
@@ -287,7 +241,7 @@ export async function buildDynamicTools(
     requireExplicitMessageTarget:
       params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
     disableMessageTool: input.ignoreDisableMessageTool ? false : params.disableMessageTool,
-    forceMessageTool: shouldForceMessageTool(messagePolicyParams),
+    forceMessageTool,
     enableHeartbeatTool: params.trigger === "heartbeat" || input.forceHeartbeatTool === true,
     forceHeartbeatTool: params.trigger === "heartbeat" || input.forceHeartbeatTool === true,
     onYield: (message, acknowledgment) => {
@@ -749,4 +703,3 @@ function shouldForceMessageTool(params: EmbeddedRunAttemptParams): boolean {
     params.disableMessageTool !== true && params.sourceReplyDeliveryMode === "message_tool_only"
   );
 }
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

@@ -41,13 +41,11 @@ import {
   createMessageToolDecisionRecorder,
   resolveTrustedDecisionChannel,
 } from "./message-tool-decision.js";
+import { buildMessageToolDefinition, createMessageToolCatalog } from "./message-tool-definition.js";
 import {
-  buildMessageToolDescription,
-  buildMessageToolSchema,
   type MessageToolDiscoveryParams,
   resolveAgentAccountId,
   resolveEffectiveCurrentChannelContext,
-  resolveMessageToolActionSchemaActions,
 } from "./message-tool-discovery.js";
 import { createMessageToolExplicitTargetGuard } from "./message-tool-explicit-target.js";
 import { createMessageToolGateway } from "./message-tool-gateway.js";
@@ -60,14 +58,11 @@ import {
   projectScheduledMessageActionPartialResult,
   shouldRevalidateCompletedMessageAction,
 } from "./message-tool-scheduled-execution.js";
-import { MessageToolSchema } from "./message-tool-schema.js";
 import {
-  addSourceReplyFinalControl,
   enforceSourceReplyOnlyMessageAction,
   enforceSourceReplyOnlyTextDirectives,
   enforceTrustedTurnExplicitAccount,
   resolveSourceReplySinkDeliveryMode,
-  SOURCE_REPLY_ONLY_MESSAGE_SCHEMA,
 } from "./message-tool-source-policy.js";
 import { createMessageToolTurnAuthority } from "./message-tool-turn-authority.js";
 import {
@@ -87,6 +82,8 @@ const recentPollVoteBySession = new Map<
 >();
 
 type MessageToolOptions = {
+  /** Describe configured capabilities without a current source; never executable. */
+  catalogOnly?: boolean;
   agentAccountId?: string;
   agentSessionKey?: string;
   runSessionKey?: string;
@@ -132,6 +129,9 @@ type MessageToolOptions = {
 
 export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
   const loadConfigForTool = options?.getRuntimeConfig ?? getRuntimeConfig;
+  if (options?.catalogOnly) {
+    return createMessageToolCatalog({ ...options, config: options.config ?? loadConfigForTool() });
+  }
   const getScopedSecretTargetsForTool =
     options?.getScopedChannelsCommandSecretTargets ?? getScopedChannelsCommandSecretTargets;
   const resolveSecretRefsForTool =
@@ -208,20 +208,10 @@ export function createMessageTool(options?: MessageToolOptions): AnyAgentTool {
         decisionChannel,
       })
     : undefined;
-  // Schema and prompt must use the same snapshot; repeated discovery can drift
-  // across plugin hooks while needlessly loading channel action metadata twice.
-  const actions = messageToolDiscoveryParams
-    ? resolveMessageToolActionSchemaActions(messageToolDiscoveryParams)
-    : undefined;
-  const baseSchema = options?.sourceReplyOnly
-    ? SOURCE_REPLY_ONLY_MESSAGE_SCHEMA
-    : messageToolDiscoveryParams
-      ? buildMessageToolSchema(messageToolDiscoveryParams, actions ?? [])
-      : MessageToolSchema;
-  const schema = addSourceReplyFinalControl(baseSchema);
-  const description = options?.sourceReplyOnly
-    ? "Send a message to the current source conversation. Supports actions: send."
-    : buildMessageToolDescription(actions);
+  const { parameters: schema, description } = buildMessageToolDefinition(
+    messageToolDiscoveryParams,
+    options?.sourceReplyOnly,
+  );
   const sandboxRoot = options?.sandboxRoot?.trim();
   const sandboxWorkspaceMediaAccess =
     sandboxRoot && options?.sandboxFsBridge && options.sandboxWorkspaceMediaReadAllowed === true
