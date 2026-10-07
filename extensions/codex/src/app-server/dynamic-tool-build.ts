@@ -703,4 +703,3 @@ function shouldForceMessageTool(params: EmbeddedRunAttemptParams): boolean {
     params.disableMessageTool !== true && params.sourceReplyDeliveryMode === "message_tool_only"
   );
 }
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
