@@ -10,7 +10,6 @@ import {
   normalizeAgentRuntimeTools,
   resolveAttemptSpawnWorkspaceDir,
   resolveModelAuthMode,
-  resolveSandboxContext,
   supportsModelTools,
   type EmbeddedRunAttemptParamsV2 as EmbeddedRunAttemptParams,
   type RuntimeToolSchemaDiagnostic,
