@@ -1,4 +1,5 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { messageToolOwnsVisibleReply } from "../auto-reply/source-reply-delivery-mode.js";
 import { isCoreCanvasHostEnabled } from "../canvas/config.js";
 import { createShowWidgetTool, hasRegisteredShowWidgetKinds } from "../canvas/widget-tool.js";
 import { getRuntimeConfig, selectApplicableRuntimeConfig } from "../config/config.js";
@@ -17,7 +18,11 @@ import {
   resolveAgentWorkspaceDir,
   resolveSessionAgentIds,
 } from "./agent-scope.js";
-import { finalizeAgentToolAvailability } from "./agent-tool-availability.js";
+import {
+  copyAgentToolAvailability,
+  finalizeAgentToolAvailability,
+} from "./agent-tool-availability.js";
+import { createAgentToolCatalogDeclaration } from "./agent-tool-catalog-declaration.js";
 import { bindAssembledAgentToolActionDescriptor } from "./agent-tool-metadata.js";
 import {
   type HookContext,
@@ -316,6 +321,7 @@ export function createOpenClawTools(
     ? null
     : createMessageTool({
         ...options,
+        catalogOnly: options?.catalogOnly,
         agentSessionKey: options?.messageToolTurnCapability?.sessionKey ?? options?.agentSessionKey,
         runSessionKey:
           options?.runSessionKey ??
@@ -370,7 +376,7 @@ export function createOpenClawTools(
     !isCronRunSessionKey(sessionKey);
   const includeMessageTool =
     !embedded ||
-    options?.sourceReplyDeliveryMode === "message_tool_only" ||
+    messageToolOwnsVisibleReply(options ?? {}) ||
     isToolExplicitlyAllowedByFactoryPolicy({
       toolName: "message",
       allowlist: explicitFactoryAllowlist,
@@ -393,7 +399,12 @@ export function createOpenClawTools(
         onPlanSaved: options?.onProgressCardPlanSaved,
       })
     : null;
-  const transcriptsTool = resolveTranscriptsTool(resolvedConfig, sessionAgentId, options);
+  const transcriptsTool = resolveTranscriptsTool(
+    resolvedConfig,
+    sessionAgentId,
+    options,
+    options?.catalogOnly,
+  );
   const tools: AnyAgentTool[] = [
     ...createInstalledSkillTools(options?.installedSkills ?? []),
     createDashboardTool({
@@ -416,6 +427,7 @@ export function createOpenClawTools(
               }),
           createCronTool({
             ...options,
+            catalogOnly: options?.catalogOnly,
             // Use the durable runSessionKey; cleanup-retired policy keys leave cron jobs dangling.
             agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
             agentId: sessionAgentId,
@@ -451,7 +463,9 @@ export function createOpenClawTools(
                 ...createAvailablePortalTools(options),
               ]),
         ]),
-    ...(!embedded && sessionKey && options?.taskSuggestionDeliveryMode === "gateway"
+    ...(!embedded &&
+    sessionKey &&
+    (options?.catalogOnly || options?.taskSuggestionDeliveryMode === "gateway")
       ? createTaskSuggestionTools({
           sessionKey,
           agentId: sessionAgentId,
@@ -493,6 +507,7 @@ export function createOpenClawTools(
     resolveSkillWorkshopToolConstructionBlock({
       sandboxed: options?.sandboxed,
       libraryAuthoring: options?.skillWorkshop?.libraryAuthoring,
+      catalogOnly: options?.catalogOnly,
     }) || !resolvedConfig
       ? null
       : createConfiguredSkillWorkshopTool({
@@ -639,10 +654,23 @@ export function createOpenClawTools(
     options?.recordToolPrepStage?.("openclaw-tools:plugin-tools");
   }
 
-  allTools = finalizeAgentToolAvailability(filterToolsByClientCaps(allTools, options?.clientCaps));
+  // A background completion has no browser capabilities, but its native catalog
+  // must remain stable. Only inert declarations skip this transient client gate;
+  // the separately built executable surface still requires the current client.
+  allTools = finalizeAgentToolAvailability(
+    options?.catalogOnly ? allTools : filterToolsByClientCaps(allTools, options?.clientCaps),
+  );
   options?.recordToolPrepStage?.("openclaw-tools:client-capabilities");
   for (const tool of allTools) {
     bindAssembledAgentToolActionDescriptor(tool);
+  }
+
+  if (options?.catalogOnly) {
+    // Outer agent policy may remove dependencies such as agents_wait. Retain
+    // only the schema projection so final availability can remove their modes.
+    return allTools.map((tool) =>
+      copyAgentToolAvailability(tool, createAgentToolCatalogDeclaration(tool)),
+    );
   }
 
   const hookAgentId = options?.requesterAgentIdOverride ?? sessionAgentId;

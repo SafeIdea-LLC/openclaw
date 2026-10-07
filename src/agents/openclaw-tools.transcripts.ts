@@ -58,9 +58,24 @@ export function resolveTranscriptsTool(
   config: OpenClawConfig | undefined,
   agentId: string,
   options: Parameters<typeof resolveTranscriptCaller>[0] | undefined,
+  catalogOnly = false,
 ): AnyAgentTool | undefined {
   if (config?.transcripts?.enabled === false) {
     return undefined;
+  }
+  if (catalogOnly) {
+    // Native threads retain declarations even when a completion has no caller.
+    // Reuse the schema owner, but never expose its callerless live executor.
+    const tool = createTranscriptsTool({ agentId, config });
+    return {
+      name: tool.name,
+      label: tool.label,
+      description: tool.description,
+      parameters: tool.parameters,
+      execute: async () => {
+        throw new Error("A catalog-only transcript declaration cannot execute");
+      },
+    };
   }
   const caller = resolveTranscriptCaller(options ?? {});
   if (!caller) {

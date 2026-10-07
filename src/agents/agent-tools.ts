@@ -10,6 +10,7 @@ import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.
 import type { SkillSnapshot } from "../skills/types.js";
 import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
+import { createAgentToolCatalogDeclaration } from "./agent-tool-catalog-declaration.js";
 import {
   bindAssembledAgentToolActionDescriptor,
   copyAgentToolMetadata,
@@ -89,11 +90,12 @@ export { resolveToolLoopDetectionConfig } from "./tool-loop-detection-config.js"
 
 // Both SDK paths assemble the same options; only compatibility resolves delegate policy synchronously.
 function* assembleOpenClawCodingTools(
-  options?: OpenClawCodingToolsOptions,
+  inputOptions?: OpenClawCodingToolsOptions,
   skillReadResources?: SkillSnapshot["resolvedSkills"],
   onPolicyFilter?: (event: ToolPolicyFilterEvent) => void,
   preparedSurface?: { tools: AnyAgentTool[]; policy: ReturnType<typeof prepareCoreToolPolicy> },
 ): Generator<OpenClawToolsOptions, AnyAgentTool[], AnyAgentTool[]> {
+  let options = inputOptions;
   const preparedTools = preparedSurface?.tools;
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
   const { isMemoryFlushRun, memoryFlush, memoryFlushWritePath } =
@@ -112,6 +114,19 @@ function* assembleOpenClawCodingTools(
       pluginMetadataSnapshot: options?.preparedModelRuntime?.metadataSnapshot,
     });
   const { agentId, runtimePluginToolGrant } = capabilityProfile.policy;
+  const catalogOnly = options?.catalogOnly === true;
+  if (catalogOnly) {
+    // Policy above keeps the real requester. Constructors below describe the
+    // persistent catalog, not this turn's owner posture. This projection never
+    // returns an executable capability or fills descendant/scheduler grants.
+    options = {
+      ...options,
+      senderIsOwner: undefined,
+      inheritedToolAllowlistRef: undefined,
+      cronCreatorToolAllowlistRef: undefined,
+      cronCreatorToolAllowlistCaptureRef: undefined,
+    };
+  }
   // Tool restrictions can belong to another agent. Never use that owner for
   // credentials, requester identity, or execution hooks.
   const executionAgentId =
@@ -429,6 +444,7 @@ function* assembleOpenClawCodingTools(
           ringZeroTools,
           yield {
             ...pluginToolOptions,
+            catalogOnly,
             sessionPortalTarget,
             sandboxSessionRenameOnly: capabilityProfile.policy.sandboxSessionRenameOnly,
             sessionPermissionPolicy,
@@ -604,7 +620,7 @@ function* assembleOpenClawCodingTools(
     onToolOutcome: options?.onToolOutcome,
     allocateToolOutcomeOrdinal: options?.allocateToolOutcomeOrdinal,
   };
-  return finalizeAgentTools({
+  const finalizedTools = finalizeAgentTools({
     ...options,
     tools: filterRequesterYieldTools(authorizedTools, executionSessionKey),
     wrapBeforeToolCallHook: preparedTools
@@ -615,6 +631,10 @@ function* assembleOpenClawCodingTools(
     hookContext,
     ...(options?.swarmCollector ? { approvalMode: "deny" as const } : {}),
   }).map(wrapGatewayCaller);
+  if (!catalogOnly) {
+    return finalizedTools;
+  }
+  return finalizedTools.map(createAgentToolCatalogDeclaration);
 }
 
 /** @deprecated Use createOpenClawCodingToolsInternalAsync for runtime construction. */

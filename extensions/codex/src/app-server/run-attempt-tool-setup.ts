@@ -350,6 +350,8 @@ export async function prepareCodexAttemptTools(runtime: CodexAttemptRuntime) {
       : await buildDynamicTools({
           ...commonToolParams,
           forceHeartbeatTool: true,
+          forceMessageTool: true,
+          catalogOnly: true,
           ignoreDisableMessageTool: true,
           ignoreRuntimePlan: true,
         });
