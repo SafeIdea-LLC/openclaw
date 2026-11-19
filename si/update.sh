@@ -106,14 +106,14 @@ fi
 
 # ---------- stop + backup ----------
 log "Stopping gateway"
-run openclaw gateway stop || true
+run openclaw gateway stop </dev/null || true
 if ((! DRY)); then
   for _ in {1..15}; do pgrep -f 'openclaw.*gateway' >/dev/null || break; sleep 1; done
   pgrep -af 'openclaw.*gateway' && die "gateway still running; stop it and retry"
 fi
 
 log "Backing up state (no workspace)"
-run openclaw backup create --output "$BACKUP_DIR" --no-include-workspace --verify
+run openclaw backup create --output "$BACKUP_DIR" --no-include-workspace --verify </dev/null
 
 # ---------- install ----------
 [[ -n "$CURRENT" && $MODE == install ]] && ((! DRY)) && echo "$CURRENT" > "$STATE_FILE"
@@ -135,13 +135,42 @@ rollback_hint() {
 }
 trap rollback_hint ERR
 
-log "doctor --fix (may take a while on first run after upgrade)"
-run env NODE_OPTIONS="--max-old-space-size=$HEAP_MB" openclaw doctor --fix
+# Doctor can ask questions (e.g. "pause the crashed gateway?") on stderr. Unattended, a prompt
+# would hang forever, so: no stdin (prompts get EOF and fail fast), output kept visible and
+# logged, and a hard timeout.
+DOCTOR_LOG="$BACKUP_DIR/doctor-$TARGET-$(date +%Y%m%d-%H%M%S).log"
+log "doctor --fix (may take a while on first run after upgrade; log: $DOCTOR_LOG)"
+run bash -c "timeout --foreground ${DOCTOR_TIMEOUT_MIN:-60}m env NODE_OPTIONS=--max-old-space-size=$HEAP_MB \
+  openclaw doctor --fix </dev/null 2>&1 | tee '$DOCTOR_LOG'; exit \${PIPESTATUS[0]}" \
+  || die "doctor --fix failed or timed out; see $DOCTOR_LOG (it may be waiting on a question: rerun 'openclaw doctor' interactively)"
+
+# Refresh OpenClaw's own service unit for the new build, clear any crash-loop state, start.
 run openclaw gateway install --force
+if command -v systemctl >/dev/null && systemctl --user cat "${OPENCLAW_UNIT:-openclaw-gateway.service}" >/dev/null 2>&1; then
+  run systemctl --user daemon-reload
+  run systemctl --user reset-failed "${OPENCLAW_UNIT:-openclaw-gateway.service}" || true
+fi
 run openclaw gateway start
-log "Gateway status"
-run openclaw gateway status --deep
+
+log "Waiting for gateway to become healthy"
+if ((! DRY)); then
+  ok=0
+  for _ in {1..12}; do   # up to ~2 min
+    if openclaw gateway status --deep </dev/null >/dev/null 2>&1; then ok=1; break; fi
+    sleep 10
+  done
+  if ((! ok)); then
+    command -v journalctl >/dev/null && journalctl --user -u "${OPENCLAW_UNIT:-openclaw-gateway.service}" -n 40 --no-pager >&2 || true
+    die "gateway not healthy after start (journal above)"
+  fi
+fi
+run openclaw gateway status --deep </dev/null
 trap - ERR
+
+# Advisory checks the updater defers until after activation (non-fatal).
+for chk in core/doctor/database-engine core/doctor/claude-cli; do
+  run bash -c "openclaw doctor --lint --only $chk </dev/null 2>&1 | tail -5" || warn "lint $chk reported issues"
+done
 
 if ((! DRY)); then
   NOW="$(openclaw --version 2>/dev/null | grep -Eo '[0-9]{4}\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?' | head -1)"
