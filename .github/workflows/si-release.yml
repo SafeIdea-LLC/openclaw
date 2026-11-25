@@ -1,0 +1,82 @@
+# SafeIdea patched OpenClaw builds (lives only on release/* branches; copied from releases/template).
+#   push to release/**      -> build + test artifact (7 days)
+#   push tag v*-si.*        -> build + GitHub Release (tgz, sha256, update.sh)
+name: si-release
+
+on:
+  push:
+    branches: ["release/**"]
+    tags: ["v*-si.*"]
+
+concurrency:
+  group: si-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable pnpm (version pinned by packageManager)
+        run: corepack enable
+
+      - name: Read version
+        id: v
+        run: |
+          V=$(node -p 'require("./package.json").version')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Building openclaw $V"
+          case "$V" in *-si.*) ;; *) echo "::error::package.json version '$V' is not an -si.N build"; exit 1;; esac
+
+      - name: Tag must match package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          [ "${GITHUB_REF_NAME#v}" = "${{ steps.v.outputs.version }}" ] || {
+            echo "::error::tag $GITHUB_REF_NAME != package.json ${{ steps.v.outputs.version }}"; exit 1; }
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Pack (self-contained, same path upstream uses for Docker E2E)
+        run: |
+          mkdir -p out
+          node scripts/package-openclaw-for-docker.mjs --allow-unreleased-changelog \
+            --output-dir out --output-name "openclaw-${{ steps.v.outputs.version }}.tgz"
+
+      - name: Checksum + stamp update.sh
+        run: |
+          cd out
+          V="${{ steps.v.outputs.version }}"
+          sha256sum "openclaw-$V.tgz" > "openclaw-$V.tgz.sha256"
+          sed -e "s|@VERSION@|$V|" -e "s|@REPO@|$GITHUB_REPOSITORY|" ../si/update.sh > update.sh
+          chmod +x update.sh
+          tar -xOzf "openclaw-$V.tgz" package/package.json | node -e \
+            'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).version; if(v!==process.argv[1]){console.error("packed version "+v);process.exit(1)}})' "$V"
+          ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openclaw-${{ steps.v.outputs.version }}
+          path: out/*
+          retention-days: 7
+
+      - name: Publish Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: false
+          generate_release_notes: false
+          body_path: si/RELEASE_NOTES.md
+          files: |
+            out/openclaw-*.tgz
+            out/openclaw-*.tgz.sha256
+            out/update.sh
