@@ -94,6 +94,7 @@ import {
 import {
   releaseNativeParentThreadIfChildrenSettled,
   canNativeParentConsumeCompletion,
+  hasNativeChildExecution,
   readNativeSubagentObservations,
   listNativePendingChildren,
   listNativeRequesterParents,
@@ -1296,6 +1297,10 @@ class Monitor {
     });
   }
 
+  hasPendingCatalogCustody(parentThreadId: string): boolean {
+    return !this.disposed && this.completionDelivery.hasPendingCatalogCustody(parentThreadId);
+  }
+
   readNativeSubagents(request: NativeSubagentsReadRequest) {
     return readNativeSubagentObservations(request, {
       states: this.parentStates,
@@ -2290,11 +2295,7 @@ class Monitor {
   }
 
   private releaseClientRetentionIfIdle(): void {
-    if (
-      [...this.childStates.values()].some(
-        (childState) => !childState.terminal && !childState.settledWithoutCompletion,
-      )
-    ) {
+    if (hasNativeChildExecution(this.childStates)) {
       return;
     }
     this.releaseRetainedClient();
