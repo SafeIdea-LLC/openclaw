@@ -12,7 +12,7 @@ This file lives on the orphan branch **`releases/template`** together with:
 | `si/RELEASE_NOTES.md` | Release body template (base tag + carried patches) |
 | `si/README.md` | This guide |
 
-Nothing here ever goes into `main` or a `fix/*` branch, so upstream PRs stay clean.
+Release tooling stays on `release/*` and `releases/template`, not `main`, `si/main`, or upstream PR branches.
 
 ---
 
@@ -21,18 +21,39 @@ Nothing here ever goes into `main` or a `fix/*` branch, so upstream PRs stay cle
 | Branch | Contents | Pushed to |
 |---|---|---|
 | `main` | Mirror of `upstream/main` — no local commits | origin |
-| `fix/<topic>-<yyyymmdd>` | One fix, based on `upstream/main`, = one upstream PR | origin → PR to openclaw/openclaw |
+| `si/main` | Maintained integration fork: upstream main plus our active patches; merge upstream, do not rebase shared history | origin only |
+| `fix/<topic>-<yyyymmdd>` | Focused upstream contribution; refresh when reviewers request it or when actively pursuing landing | contributor fork → PR to openclaw/openclaw |
 | `release/<base>-si` | Upstream release tag + cherry-picked fixes + this tooling | origin only |
 | `releases/template` | Orphan branch with only the tooling files | origin only |
 
-Remotes: `origin` = `SafeIdea-LLC/openclaw`, `upstream` = `openclaw/openclaw`.
+Examples below use `origin` = `SafeIdea-LLC/openclaw`, `upstream` = `openclaw/openclaw`. Check `git remote -v` first: some existing checkouts use `safeidea` for the fork and `origin` for upstream. Never rename shared remotes just to follow these examples.
+
+## Maintain the fork independently of upstream PRs
+
+Our shipping path does not wait for upstream review or acceptance. Keep continuation and app branding together on `si/main`; keep their upstream PRs separate and leave their existing heads untouched unless review or active upstream work requires a refresh.
+
+At a deliberate integration checkpoint, in an exclusive clean worktree:
+
+```bash
+git fetch upstream main
+git switch si/main
+git merge --no-ff upstream/main
+# Resolve conflicts, preserving upstream fixes; run affected checks and review.
+git push origin si/main
+```
+
+Pin the fetched SHA in the task evidence. If upstream rewrites history or Git cannot establish ancestry, investigate before merging; never use `--allow-unrelated-histories` or force-push the shared fork as a routine recovery. A merge preserves our history, but still needs semantic conflict review.
+
+Release candidates start from a chosen stable tag, not a moving `si/main` tip. Carry only still-missing fixes from the integration branch or retained feature commits. Record their source SHAs and any adaptations in `si/RELEASE_NOTES.md`. Upstream may squash or independently implement a fix: `git cherry` is an aid, not proof that behavior is absent.
+
+Freeze the candidate while qualifying it. New upstream releases alone do not restart qualification; reconsider for a relevant security fix or a demonstrated blocker. Review upgrades on a regular cadence (normally weekly), not on every upstream push. Do not install directly from `si/main`.
 
 ## Versioning
 
 `<next upstream patch>-si.<n>` — e.g. a build on top of upstream **v2026.11.3** is **2026.11.4-si.1**, `-si.2`, …
 
 - Sorts **above** stock 2026.11.3, so update checks never "upgrade" you back to stock.
-- Sorts **below** the real 2026.11.4, so when upstream ships it, it correctly looks newer — that's the cue to cut a new release branch.
+- Sorts **below** the real 2026.11.4, so when upstream ships it, it correctly looks newer — that is an upgrade signal, not an instruction to discard an in-flight candidate. The operator selects the next release on the agreed cadence.
 - The git tag is the version with a `v`: `v2026.11.4-si.1`. CI refuses a tag that doesn't match `package.json`.
 - Branch name and release notes record the *real* base (`release/2026.11.3-si`, "Base: v2026.11.3").
 
@@ -93,7 +114,7 @@ bash /tmp/si-build/update.sh --tarball /tmp/si-build/openclaw-2026.11.4-si.1.tgz
 ```
 Smoke test: `openclaw gateway status --deep`, then a real continuation run with Codex and Claude.
 
-Need another change? Commit on the release branch (or better, on the fix branch and re-cherry-pick), push, test again.
+Need another change? Repair it on `si/main` when applicable, port the fix to the frozen release branch, push, and re-test. Updating the upstream PR is independent work, not a prerequisite.
 Bump `-si.N` only when you're about to tag.
 
 ## 4. Publish (tag)
@@ -118,7 +139,7 @@ last 3 builds/backups. If anything fails: `bash update.sh --rollback`.
 
 The agents on each instance should *run* `update.sh`, never build OpenClaw themselves.
 
-## 6. When upstream ships a new release
+## 6. At the next chosen upgrade checkpoint
 
 ```bash
 git fetch upstream --tags
@@ -126,8 +147,7 @@ BASE=v2026.11.4
 git switch -c release/${BASE#v}-si $BASE
 git cherry -v $BASE release/2026.11.3-si    # "+" lines = patches still to carry
 ```
-Re-apply the "+" fixes, copy the tooling (step 2), set `2026.11.5-si.1`. Every fix merged
-upstream simply disappears from the list — that's the goal.
+Inspect the remaining behavioral differences, not just the "+" list. Drop patches only after verifying equivalent behavior in the selected released source and retaining regression coverage. Port the remaining fixes, copy the tooling (step 2), and choose the next `-si.N` version. Preserve the preceding qualified candidate as a fallback; do not rebase it in place.
 
 ## Updating the template itself
 
