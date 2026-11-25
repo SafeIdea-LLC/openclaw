@@ -30,7 +30,9 @@ export function initializeControlUiDocumentHead(): void {
   ] as const) {
     const link = document.getElementById(id);
     if (link instanceof HTMLLinkElement) {
-      link.href = inferControlUiPublicAssetPath(asset);
+      if (!document.documentElement.hasAttribute("data-openclaw-app-identity")) {
+        link.href = inferControlUiPublicAssetPath(asset);
+      }
       if (link.rel === "icon") {
         favicons.push(link);
       }

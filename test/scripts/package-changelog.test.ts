@@ -116,11 +116,14 @@ describe("package-changelog", () => {
     );
   });
 
-  it.each(["2026.5.28-beta.2", "2026.5.28-1"])("prefers exact %s notes", (version) => {
-    const selected = notes(version, "- Package notes with enough release detail.");
-    const source = `# Changelog\n${selected}${notes("2026.5.28", "- Stable.")}`;
-    expect(extractCurrentPackageChangelog(source, version)).toBe(`# Changelog\n\n${selected}`);
-  });
+  it.each(["2026.5.28-beta.2", "2026.5.28-1", "2026.5.28-si.1"])(
+    "prefers exact %s notes",
+    (version) => {
+      const selected = notes(version, "- Package notes with enough release detail.");
+      const source = `# Changelog\n${selected}${notes("2026.5.28", "- Stable.")}`;
+      expect(extractCurrentPackageChangelog(source, version)).toBe(`# Changelog\n\n${selected}`);
+    },
+  );
 
   it.each(["Unreleased", "2026.5.30 (Unreleased)", "2026.5.30 (Release notes)"])(
     "rejects a missing release below %s notes",
@@ -138,6 +141,32 @@ describe("package-changelog", () => {
       extractCurrentPackageChangelog(source, "2026.5.29", { allowUnreleased: true }),
     ).toThrow("Packaged changelog section for 2026.5.29 is only 7 body bytes");
   });
+
+  it("packages fork drafts only with explicit fallback and restores the source", async () => {
+    const source = `# Changelog\n${notes("Unreleased", "- Pending release notes with enough detail.")}${current}`;
+    const { root, read, write } = makeChangelog(source, "2026.11.9-si.1");
+    await expect(preparePackageChangelog(root)).rejects.toThrow(
+      "does not contain a release section",
+    );
+    await expect(preparePackageChangelog(root, { allowUnreleased: true })).resolves.toBe(true);
+    expect(read()).toContain("## Unreleased");
+    expect(read()).not.toContain("## 2026.5.28");
+    await expect(restorePackageChangelog(root)).resolves.toBe(true);
+    expect(read()).toBe(source);
+    write("CHANGELOG.md", `${source}\n${notes("2026.11.9-si.1", "- Tiny.")}`);
+    await expect(preparePackageChangelog(root, { allowUnreleased: true })).rejects.toThrow(
+      "only 7 body bytes",
+    );
+  });
+
+  it.each(["2026.11.9-si.0", "2026.11.9-si.01", "2026.11.9-si.1-extra"])(
+    "rejects malformed fork version %s even with fallback",
+    (version) => {
+      expect(() =>
+        extractCurrentPackageChangelog(cumulativeChangelog, version, { allowUnreleased: true }),
+      ).toThrow("Unsupported OpenClaw package version");
+    },
+  );
 
   it("excludes the generated record link from the editorial minimum", () => {
     const source = `# Changelog\n\n## 2026.5.28\n\n### Fixes\n\n${largeRecord}\n`;

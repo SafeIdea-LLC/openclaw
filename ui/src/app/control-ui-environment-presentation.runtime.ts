@@ -119,8 +119,9 @@ function resolveFaviconPalette() {
   const environmentColor = environment
     ? style.getPropertyValue(`--control-ui-environment-${environment.color}`).trim()
     : "";
-  const artwork =
-    currentThemeBranding().brandIcon !== "claw"
+  const artwork = document.documentElement.hasAttribute("data-openclaw-app-icon")
+    ? null
+    : currentThemeBranding().brandIcon !== "claw"
       ? neutralMarkSvg({
           fill: style.getPropertyValue("--primary").trim(),
           glyph: style.getPropertyValue("--primary-foreground").trim(),

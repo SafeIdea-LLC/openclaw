@@ -512,6 +512,23 @@ export function listNativeRequesterParents(
   );
 }
 
+/** Execution retention ends at terminal work, independently of pending completion delivery. */
+export function hasNativeChildExecution(
+  children: ReadonlyMap<string, ChildState>,
+  parentThreadId?: string,
+): boolean {
+  for (const child of children.values()) {
+    if (
+      (parentThreadId === undefined || child.parentThreadId === parentThreadId) &&
+      !child.terminal &&
+      !child.settledWithoutCompletion
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Release a settled sibling cohort before re-driving its held completion deliveries. */
 export function releaseNativeParentThreadIfChildrenSettled(params: {
   parentThreadId: string;
@@ -521,14 +538,8 @@ export function releaseNativeParentThreadIfChildrenSettled(params: {
   deliverDetached: (state: ParentState) => void;
 }): void {
   const { parentThreadId, children, retentions, parents, deliverDetached } = params;
-  for (const child of children.values()) {
-    if (
-      child.parentThreadId === parentThreadId &&
-      !child.terminal &&
-      !child.settledWithoutCompletion
-    ) {
-      return;
-    }
+  if (hasNativeChildExecution(children, parentThreadId)) {
+    return;
   }
   // Pending delivery keeps its own custody, but must not block the parent's subscription.
   const release = retentions.get(parentThreadId);

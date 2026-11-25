@@ -19,6 +19,7 @@ import {
   isValidPortalIngressDomain,
   portalIngressConflictsWithOrigin,
 } from "./gateway-portal-ingress.js";
+import { GatewayAppIdentitySchema } from "./zod-schema.gateway-app-identity.js";
 import {
   GatewayRemoteConfigSchema,
   ResponsesEndpointUrlFetchShape,
@@ -232,6 +233,7 @@ export const GatewayConfigSchema = z
           .optional(),
         /** Optional filesystem root for Control UI assets (defaults to dist/control-ui). */
         root: z.string().optional(),
+        appIdentity: GatewayAppIdentitySchema.optional(),
         /** Optional visual label and named color distinguishing this Gateway environment. */
         environment: z
           .strictObject({
