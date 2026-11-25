@@ -749,3 +749,44 @@ Every section heading from the previous single-page version keeps its anchor her
 - [TUI](/web/tui) — terminal user interface
 - [WebChat](/web/webchat) — browser-based chat interface
 - [Codex session catalog and supervision](/plugins/codex-supervision) — the Native Session Discovery settings surface
+
+## Installed app identity
+
+Set `gateway.controlUi.appIdentity` to give this Gateway its own installed-app
+name and artwork. These public settings are shared by all readers, independent
+of personal themes and the selected agent. The configuration editor exposes
+the fields under Gateway → Control UI → Installed App Identity.
+
+```json5
+{
+  gateway: {
+    controlUi: {
+      appIdentity: {
+        name: "My Assistant",
+        shortName: "Assistant",
+        themeColor: "#0a0a0a",
+        backgroundColor: "#0a0a0a",
+      },
+    },
+  },
+}
+```
+
+The optional `icon` field accepts a PNG snapshot as a
+`data:image/png;base64,...` URL, at most 512 KiB of decoded image data. Use square
+artwork with the subject centered. The Gateway crops and generates PNGs at
+32, 180, 192, and 512 pixels through its image processor. Filesystem paths and
+remote image URLs are not accepted. Treat the icon and name as public: browsers
+retrieve installation metadata before signing in to the Control UI.
+
+Apply configuration through the normal configuration workflow, then reload the
+browser. The app manifest and tab use the configured name; installed launcher
+icons and names refresh on the browser's own schedule and may require
+reinstalling the PWA. Names and icons do not change the app's stable identity.
+Changing the origin or Control UI mount path still changes that identity.
+
+Remove `appIdentity` to restore bundled OpenClaw branding. Settings survive
+application updates because they are part of Gateway configuration, not edits
+to installed UI files. This initial interface uses the configuration editor;
+a dedicated icon uploader, maskable artwork, agent-identity import, and plugin
+presets are not included.

@@ -52,7 +52,9 @@ export function connectControlUiFaviconArtwork(context: {
     }
     const scope = gatewayPresentationScope(context.gateway);
     const branding = context.theme.branding;
-    const themeSource = branding.artwork?.icons?.[branding.brandIcon]?.url;
+    const themeSource = document.documentElement.hasAttribute("data-openclaw-app-icon")
+      ? undefined
+      : branding.artwork?.icons?.[branding.brandIcon]?.url;
     const preference = context.theme.settings.tabIcon ?? "default";
     // Theme suppression is presentation-only; switching back restores the saved choice.
     const mode = !branding.lobsterdex && preference.startsWith("lobster:") ? "default" : preference;

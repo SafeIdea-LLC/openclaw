@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { GatewayControlUiConfig } from "../config/types.gateway.js";
 import { escapeHtml } from "../shared/html-escape.js";
 import { escapeRegExp } from "../shared/regexp.js";
+import { applyControlUiAppIdentity } from "./control-ui-app-identity.js";
 import {
   buildControlUiRootAssetPath,
   CONTROL_UI_BASE_PATH_ATTRIBUTE,
@@ -64,6 +66,7 @@ export async function serveControlUiIndexHtml(
   isSessionEntryCurrent?: () => boolean,
   proxySessionEntry = false,
   bootstrapConfig?: ControlUiBootstrapConfig,
+  appIdentity?: GatewayControlUiConfig["appIdentity"],
 ) {
   const ingress = getRemoteControlUiIngressContext(req);
   const normalizedBasePath = normalizeControlUiBasePath(basePath);
@@ -73,10 +76,14 @@ export async function serveControlUiIndexHtml(
       : uiPath === "/new" || uiPath === "/new/"
         ? "new"
         : null;
-  const withBasePath = rewriteControlUiIndexHtmlAssetHrefs(
-    selectControlUiRoutePreloads(body, preloadRoute),
+  const withBasePath = applyControlUiAppIdentity(
+    rewriteControlUiIndexHtmlAssetHrefs(
+      selectControlUiRoutePreloads(body, preloadRoute),
+      normalizedBasePath,
+      buildId,
+    ),
     normalizedBasePath,
-    buildId,
+    appIdentity,
   );
   // An empty base path is authoritative for Gateway resources even when the
   // router infers a namespace. Always emit it so resources stay root-mounted.

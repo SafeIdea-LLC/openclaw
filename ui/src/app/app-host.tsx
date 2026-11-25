@@ -463,7 +463,9 @@ export class ShellOwner
     const { phase } = context.gateway.snapshot;
     let title = formatDocumentTitle({
       context: primaryContext,
-      brandName: context.theme.branding.brandName,
+      brandName:
+        document.documentElement.getAttribute("data-openclaw-app-name") ??
+        context.theme.branding.brandName,
       attentionCount: phase === "connected" ? context.overlays.snapshot.approvalQueue.length : 0,
     });
     const environment = context.config?.current.environment;

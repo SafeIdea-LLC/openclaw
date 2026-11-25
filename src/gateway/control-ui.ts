@@ -35,6 +35,7 @@ import {
   assertAssistantMediaPolicyCurrent,
   verifyAssistantMediaTicket,
 } from "./assistant-media-policy.js";
+import { serveControlUiAppIdentity } from "./control-ui-app-identity.js";
 import {
   normalizeAssistantMediaSource,
   openAssistantMedia,
@@ -54,7 +55,7 @@ import { startControlUiDocumentDiagnostics } from "./control-ui-document-diagnos
 import {
   isReadHttpMethod,
   respondNotFound as respondControlUiNotFound,
-  respondPlainText,
+  respondControlUiAssetsUnavailable,
 } from "./control-ui-http-utils.js";
 import { serveControlUiIndexHtml } from "./control-ui-index.js";
 import { resolveAssistantMediaRoutePath } from "./control-ui-resource-routes.js";
@@ -92,8 +93,6 @@ import { readControlUiRootAsset, type ControlUiRootState } from "./server-contro
 import { isTerminalConfigEnabled } from "./terminal/enabled.js";
 
 const ROOT_PREFIX = "/";
-const CONTROL_UI_ASSETS_MISSING_MESSAGE =
-  "Control UI assets not found. Build them with `pnpm ui:build` (auto-installs UI deps), or run `pnpm ui:dev` during development.";
 const loadAvatarThumbnail = createLazyRuntimeModule(
   () => import("./assistant-avatar-thumbnail.runtime.js"),
 );
@@ -114,22 +113,6 @@ const CONTROL_UI_NAMESPACE_PREFIX = "/__openclaw__/";
 function sendJson(res: ServerResponse, status: number, body: unknown) {
   res.setHeader("Cache-Control", "no-cache");
   sendJsonResponse(res, status, body);
-}
-
-function respondControlUiAssetsUnavailable(res: ServerResponse, root?: ControlUiRootState) {
-  const message =
-    root?.kind === "preparing"
-      ? "Control UI assets are being prepared. Try again shortly."
-      : root?.kind === "failed"
-        ? "Control UI assets could not be prepared. Check the Gateway logs or run `openclaw doctor --fix`."
-        : root?.kind === "invalid" && root.path
-          ? `Control UI assets not found at ${root.path}. Build them with \`pnpm ui:build\` (auto-installs UI deps), or update gateway.controlUi.root.`
-          : CONTROL_UI_ASSETS_MISSING_MESSAGE;
-  if (root?.kind === "preparing") {
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Retry-After", "1");
-  }
-  respondPlainText(res, 503, message);
 }
 
 function isValidAgentPathSegment(agentId: string): boolean {
@@ -638,6 +621,18 @@ export async function handleControlUiHttpRequest(
     return true;
   }
 
+  if (
+    await serveControlUiAppIdentity(
+      req,
+      res,
+      url,
+      basePath,
+      (opts?.getRuntimeConfig?.() ?? opts?.config)?.gateway?.controlUi?.appIdentity,
+    )
+  ) {
+    return true;
+  }
+
   const root = rootState.path;
   const rootReal =
     rootState.realPath ||
@@ -797,6 +792,7 @@ export async function handleControlUiHttpRequest(
           opts?.isSessionEntryCurrent?.() !== false,
         opts?.auth?.mode === "trusted-proxy",
         bootstrap?.config,
+        (opts?.getRuntimeConfig?.() ?? opts?.config)?.gateway?.controlUi?.appIdentity,
       );
       return true;
     }

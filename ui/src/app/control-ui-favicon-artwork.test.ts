@@ -117,12 +117,30 @@ async function settle(
 }
 
 afterEach(() => {
+  document.documentElement.removeAttribute("data-openclaw-app-icon");
   cleanups.splice(0).forEach((stop) => stop());
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
   vi.mocked(loadUnlockedLobsterFavicon).mockReset();
   vi.mocked(fetchPluginThemeArtworkBlobUrl).mockReset();
+});
+
+it("keeps the gateway app icon ahead of theme artwork but allows a personal tab icon", async () => {
+  document.documentElement.setAttribute("data-openclaw-app-icon", "true");
+  mockImage();
+  vi.mocked(fetchPluginThemeArtworkBlobUrl).mockResolvedValue("blob:theme-art");
+  const fixture = setup("default");
+  fixture.theme.branding = shipBranding();
+  await settle(fixture, null);
+  expect(fetchPluginThemeArtworkBlobUrl).not.toHaveBeenCalled();
+
+  vi.mocked(resolveAvatarImageUrl).mockReturnValue("blob:personal-avatar");
+  fixture.theme.settings.tabIcon = "agent:circle";
+  await settle(fixture, "blob:personal-avatar", "circle");
+  fixture.theme.settings.tabIcon = "default";
+  await settle(fixture, null);
+  expect(fetchPluginThemeArtworkBlobUrl).not.toHaveBeenCalled();
 });
 
 it("uses theme artwork as fallback, respects personal artwork, and follows theme hot reload", async () => {
