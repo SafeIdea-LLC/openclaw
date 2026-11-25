@@ -49,7 +49,7 @@ jobs:
       - name: Pack (self-contained, same path upstream uses for Docker E2E)
         run: |
           mkdir -p out
-          node scripts/package-openclaw-for-docker.mjs --allow-unreleased-changelog \
+          node scripts/package-openclaw-for-docker.mjs --allow-unreleased-changelog --bundle-plugin codex \
             --output-dir out --output-name "openclaw-${{ steps.v.outputs.version }}.tgz"
 
       - name: Checksum + stamp update.sh
@@ -62,6 +62,29 @@ jobs:
           tar -xOzf "openclaw-$V.tgz" package/package.json | node -e \
             'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=JSON.parse(s).version; if(v!==process.argv[1]){console.error("packed version "+v);process.exit(1)}})' "$V"
           ls -lh
+
+      - name: Verify installed Codex runtime
+        run: |
+          PREFIX="$RUNNER_TEMP/si-package-check"
+          npm install --global --prefix "$PREFIX" "./out/openclaw-${{ steps.v.outputs.version }}.tgz" --no-fund --no-audit
+          node --input-type=module - "$PREFIX/lib/node_modules/openclaw" <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          import { dirname, join } from 'node:path';
+          import { execFileSync } from 'node:child_process';
+          const root = process.argv[2];
+          const pluginPath = join(root, 'dist/extensions/codex/package.json');
+          const plugin = JSON.parse(readFileSync(pluginPath, 'utf8'));
+          assert.equal(plugin.openclaw.build.bundledDist, true);
+          const require = createRequire(pluginPath);
+          const nativePath = require.resolve('@openai/codex/package.json');
+          const native = JSON.parse(readFileSync(nativePath, 'utf8'));
+          assert.equal(native.version, plugin.dependencies['@openai/codex']);
+          const version = execFileSync(process.execPath, [join(dirname(nativePath), 'bin/codex.js'), '--version'], { encoding: 'utf8' }).trim();
+          assert.equal(version, `codex-cli ${native.version}`);
+          console.log(`Bundled Codex runtime verified: ${version}`);
+          NODE
 
       - uses: actions/upload-artifact@v4
         with:
