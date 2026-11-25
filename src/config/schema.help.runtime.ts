@@ -237,6 +237,18 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     "Allow ClawHub discovery and one-way Add through the web app and Gateway (default: true). Retained as an advanced config-only opt-out; existing false values remain off. Installation still requires its normal authority and consent. Existing agents keep running while this is off.",
   "gateway.controlUi.experimental.chatBubbles":
     "Enable experimental speech bubbles in the web app (default: false). Home defaults to bubbles while enabled; browser-local per-session choices take precedence. Changes apply without a Gateway restart.",
+  "gateway.controlUi.appIdentity":
+    "Public gateway-wide installed-app branding. Independent of personal themes and agents. Remove to restore OpenClaw branding. Reload the browser after applying; installed apps may need reinstalling to refresh their name or icon.",
+  "gateway.controlUi.appIdentity.name":
+    "Public app name (1–80 characters). Also used in browser tab titles.",
+  "gateway.controlUi.appIdentity.shortName":
+    "Public short app name (1–24 characters), used where launcher space is limited.",
+  "gateway.controlUi.appIdentity.icon":
+    "Public PNG snapshot encoded as a data:image/png;base64 URL, up to 512 KiB. Use square artwork; the gateway crops and resizes it for app icons. No filesystem paths or remote URLs are accepted.",
+  "gateway.controlUi.appIdentity.themeColor":
+    "Installed-app theme color as six-digit hex, for example #0a0a0a.",
+  "gateway.controlUi.appIdentity.backgroundColor":
+    "Installed-app splash background as six-digit hex, for example #0a0a0a.",
   "gateway.controlUi.environment":
     "Optional public environment identity shown in the web app stripe, agent avatar, label pills, browser title, and favicon. Omit it to preserve the default appearance.",
   "gateway.controlUi.environment.label":

@@ -15,6 +15,7 @@ import {
   prepareGatewayAssistantAvatar,
 } from "./assistant-avatar.js";
 import { resolveAssistantIdentityAvatar } from "./assistant-identity.js";
+import { serveControlUiAppIdentity } from "./control-ui-app-identity.js";
 import { matchesControlUiBootstrapConfigPath } from "./control-ui-bootstrap-contract.js";
 import { prepareControlUiBootstrapConfig } from "./control-ui-bootstrap.js";
 import {
@@ -270,6 +271,18 @@ export async function handleControlUiHttpRequest(
     if (!opts?.onUnavailableDocument?.()) {
       respondControlUiAssetsUnavailable(res, rootState);
     }
+    return true;
+  }
+
+  if (
+    await serveControlUiAppIdentity(
+      req,
+      res,
+      url,
+      basePath,
+      (opts?.getRuntimeConfig?.() ?? opts?.config)?.gateway?.controlUi?.appIdentity,
+    )
+  ) {
     return true;
   }
 
